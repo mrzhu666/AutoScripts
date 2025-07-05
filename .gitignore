@@ -1,0 +1,29 @@
+# 忽略包含cookies字符串的文件
+*cookies*
+*cookie*
+*Cookies*
+*Cookie*
+
+# 常见的cookies文件模式
+cookies.txt
+cookies.json
+cookies.csv
+*.cookies
+cookies_*.txt
+cookies_*.json
+
+# 浏览器cookies文件
+chrome_cookies.txt
+firefox_cookies.txt
+safari_cookies.txt
+edge_cookies.txt
+
+# 网站特定的cookies文件
+music.youtube.com_cookies.txt
+youtube_cookies.txt
+*.youtube.com_cookies.txt
+
+# 其他可能的cookies相关文件
+session_cookies.txt
+auth_cookies.txt
+login_cookies.txt 
