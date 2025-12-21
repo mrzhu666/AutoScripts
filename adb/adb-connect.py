@@ -4,7 +4,7 @@
 import yaml
 import os
 
-with open('config.yaml', 'r') as file:
+with open('./adb/config.yaml', 'r') as file:
     config = yaml.safe_load(file)
     mobileIp = config['mobileIp']
     print(mobileIp)

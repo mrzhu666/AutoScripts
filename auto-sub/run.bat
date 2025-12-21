@@ -1,0 +1,2 @@
+python rename.py
+pause
