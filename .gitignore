@@ -1,5 +1,8 @@
 config.yaml
 
+__pycache__
+.pytest_cache
+
 # 忽略包含cookies字符串的文件
 *cookies*
 *cookie*

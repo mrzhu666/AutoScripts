@@ -4,6 +4,42 @@ import re
 
 # srt字幕文件台词提取，并保存为txt文件
 
+
+def halfwidth_to_fullwidth_punct(text: str) -> str:
+    """
+    将文本中的常见半角标点符号转换为全角标点符号。
+    仅转换标点，不动字母和数字。
+    """
+    table = str.maketrans({
+        "!": "！",
+        "?": "？",
+        ",": "，",
+        ".": "。",
+        ":": "：",
+        ";": "；",
+        "'": "’",
+        '"': "”",
+        "(": "（",
+        ")": "）",
+        "[": "【",
+        "]": "】",
+        "<": "《",
+        ">": "》",
+        "-": "－",
+        "~": "～",
+        "_": "＿",
+        "#": "＃",
+        "&": "＆",
+        "%": "％",
+        "@": "＠",
+        "*": "＊",
+        "+": "＋",
+        "/": "／",
+        "\\": "＼",
+    })
+    return text.translate(table)
+
+
 def extract_srt_dialogue(srt_path):
     txt_path = os.path.splitext(srt_path)[0] + '.txt'
     with open(srt_path, 'r', encoding='utf-8') as srt_file, \
@@ -21,11 +57,15 @@ def extract_srt_dialogue(srt_path):
             if not line:
                 continue
             # 其余为台词
+            
+            # 将半角标点转换为全角
+            line = halfwidth_to_fullwidth_punct(line)
             buffer.append(line)
         # 将台词逐行写入txt
         for dialogue in buffer:
             txt_file.write(dialogue + '\n')
     print(f"已提取台词到: {txt_path}")
+
 
 if __name__ == "__main__":
     # 获取路径输入
@@ -33,4 +73,3 @@ if __name__ == "__main__":
     # 如果有去除左右双引号
     srt_path = srt_path.strip('"')
     extract_srt_dialogue(srt_path)
-
