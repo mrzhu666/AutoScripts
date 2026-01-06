@@ -7,13 +7,16 @@ import logging
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
+
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import WebDriverException, TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
 
 # 配置日志
 logging.basicConfig(
@@ -51,7 +54,7 @@ def create_webdriver(chrome_driver_path: Optional[str] = None) -> WebDriver:
         
         if chrome_driver_path:
             service = Service(executable_path=chrome_driver_path)
-            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver: Chrome = webdriver.Chrome(service=service, options=chrome_options)
         else:
             driver = webdriver.Chrome(options=chrome_options)
         
@@ -264,12 +267,71 @@ def set_cookies_from_file(driver: WebDriver, cookie_file_path: str, domain: Opti
         return False
 
 
+def enter_auth_code(driver: WebDriver, auth_code: str, timeout: int = 10) -> bool:
+    """
+    在页面中找到 AuthCode 文本输入框并输入密钥。
+
+    本函数会等待输入框出现，清空原有内容并输入新的密钥，
+    然后读取输入框的实际值进行校验。
+
+    Args:
+        driver: 已经打开目标页面的 WebDriver 实例。
+        auth_code: 需要输入的认证密钥字符串。
+        timeout: 等待输入框出现的超时时间（秒），默认 10 秒。
+
+    Returns:
+        bool: 如果成功输入且校验通过返回 True，否则返回 False。
+
+    Raises:
+        WebDriverException: 当发生底层 WebDriver 错误时抛出。
+
+    Example:
+        >>> driver = create_webdriver()
+        >>> navigate_to_page(driver, "http://desktop-wsl-tailscale:4000/dash")
+        >>> ok = enter_auth_code(driver, "123567")
+        >>> print(ok)
+        True
+    """
+    try:
+        logger.info("开始查找 AuthCode 输入框并输入密钥")
+        wait = WebDriverWait(driver, timeout)
+
+        # 优先通过 aria-label 精确定位该输入框
+        input_locator = (By.CSS_SELECTOR, 'input[aria-label="AuthCode"]')
+
+        input_element = wait.until(EC.presence_of_element_located(input_locator))
+        logger.debug("已找到 AuthCode 输入框，开始输入密钥")
+
+        input_element.clear()
+        input_element.send_keys(auth_code)
+
+        real_value = input_element.get_attribute("value") or ""
+        if real_value == auth_code:
+            logger.info("密钥输入成功并通过校验")
+            return True
+
+        logger.warning(
+            "密钥输入后校验失败，期望值为 '%s'，实际值为 '%s'",
+            auth_code,
+            real_value,
+        )
+        return False
+
+    except TimeoutException as exc:
+        logger.error("在页面中查找 AuthCode 输入框超时: %s", exc)
+        return False
+    except WebDriverException as exc:
+        logger.error("输入 AuthCode 时发生 WebDriver 错误: %s", exc)
+        raise
+
+
 def main() -> None:
     """
     主函数：创建 WebDriver 并打开目标页面。
     """
     driver: Optional[WebDriver] = None
     target_url = "http://desktop-wsl-tailscale:4000/dash"
+    auth_code = "123567"
     
     try:
         # 创建 WebDriver
@@ -282,13 +344,18 @@ def main() -> None:
             # 设置 cookie
             cookie_file = Path(__file__).parent / "wewe-rrs-cookie.txt"
             cookie_set = set_cookies_from_file(driver, str(cookie_file))
-            
+
             if cookie_set:
                 logger.info("Cookie 设置成功")
             else:
                 logger.warning("Cookie 设置失败，但继续执行")
-            
-            logger.info("页面已成功打开，可以开始后续操作")
+
+            # 任务 2：在页面中输入认证密钥
+            auth_ok = enter_auth_code(driver, auth_code, timeout=10)
+            if not auth_ok:
+                logger.warning("认证密钥输入可能未生效，请手动检查页面状态")
+
+            logger.info("页面已成功打开并尝试输入密钥，可以开始后续操作")
             # 保持浏览器打开，等待用户操作或后续任务
             input("按 Enter 键关闭浏览器...")
         else:
