@@ -4,6 +4,7 @@ Selenium 爬虫：打开 wewe-rss 仪表板页面
 """
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
@@ -21,9 +22,18 @@ from selenium.webdriver.support.ui import WebDriverWait
 # 配置日志
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FeedItem:
+    """左侧订阅列表中的单条数据项。"""
+
+    title: str
+    href: str
+    data_key: str
 
 
 def create_webdriver(chrome_driver_path: Optional[str] = None) -> WebDriver:
@@ -367,6 +377,71 @@ def click_auth_confirm_button(driver: WebDriver, timeout: int = 10) -> bool:
         raise
 
 
+def read_left_feed_list(driver: WebDriver, timeout: int = 10) -> list[FeedItem]:
+    """
+    读取左侧订阅列表，并返回其中所有条目的结构化数据。
+
+    本函数会等待列表至少出现一条记录，然后解析每个条目的标题、
+    链接 href 以及 data-key。列表长度是动态的，会根据当前页面实际
+    渲染的条目数量返回对应长度的列表。
+
+    Args:
+        driver: 已经完成认证并进入仪表盘页面的 WebDriver 实例。
+        timeout: 等待列表元素出现的超时时间（秒），默认 10 秒。
+
+    Returns:
+        list[FeedItem]: 订阅条目数据列表，如果没有找到则返回空列表。
+    """
+    try:
+        logger.info("开始读取左侧订阅列表")
+        wait = WebDriverWait(driver, timeout)
+
+        # 根据提供的结构：li[data-slot=\"base\"] 下的 ul[role=\"group\"] 中的 a[role=\"option\"]
+        items_locator = (
+            By.CSS_SELECTOR,
+            'li[data-slot="base"] ul[role="group"] a[role="option"]',
+        )
+
+        elements = wait.until(EC.presence_of_all_elements_located(items_locator))
+
+        feed_items: list[FeedItem] = []
+        for element in elements:
+            # 文本标题位于内部 span[data-label=true]
+            title_span = element.find_element(By.CSS_SELECTOR, 'span[data-label="true"]')
+            title = (title_span.text or "").strip()
+            href = element.get_attribute("href") or ""
+            data_key = element.get_attribute("data-key") or ""
+
+            feed_items.append(
+                FeedItem(
+                    title=title,
+                    href=href,
+                    data_key=data_key,
+                )
+            )
+
+        logger.info("成功读取左侧订阅列表，共 %d 项", len(feed_items))
+
+        # 为了快速人工验证，打印前几项
+        for idx, item in enumerate(feed_items[:5], start=1):
+            logger.info(
+                "订阅项 %d: title='%s', data_key='%s', href='%s'",
+                idx,
+                item.title,
+                item.data_key,
+                item.href,
+            )
+
+        return feed_items
+
+    except TimeoutException as exc:
+        logger.warning("未能在页面中找到左侧订阅列表: %s", exc)
+        return []
+    except WebDriverException as exc:
+        logger.error("读取左侧订阅列表时发生 WebDriver 错误: %s", exc)
+        raise
+
+
 def main() -> None:
     """
     主函数：创建 WebDriver 并打开目标页面。
@@ -402,7 +477,12 @@ def main() -> None:
             if not confirm_ok:
                 logger.warning("“确认”按钮点击可能未成功，请手动检查页面状态")
 
-            logger.info("页面已成功打开、输入密钥并尝试点击确认，可以开始后续操作")
+            # 任务 4：读取左侧订阅列表（列表项数量是动态的）
+            feed_items = read_left_feed_list(driver, timeout=10)
+            if not feed_items:
+                logger.warning("左侧订阅列表为空或读取失败，请手动检查页面状态")
+
+            logger.info("页面已成功打开、输入密钥、点击确认并读取左侧列表，可以开始后续操作")
             # 保持浏览器打开，等待用户操作或后续任务
             input("按 Enter 键关闭浏览器...")
         else:
