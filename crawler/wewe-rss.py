@@ -4,6 +4,7 @@ Selenium 爬虫：打开 wewe-rss 仪表板页面
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -442,6 +443,95 @@ def read_left_feed_list(driver: WebDriver, timeout: int = 10) -> list[FeedItem]:
         raise
 
 
+def click_all_feed_items(
+    driver: WebDriver,
+    timeout: int = 10,
+    delay_seconds: float = 0.5,
+) -> int:
+    """
+    依次点击左侧订阅列表中的每一项。
+
+    为避免元素失效（StaleElementReference），每次点击前都会重新获取
+    当前列表，并按索引定位需要点击的元素。
+
+    Args:
+        driver: 已经完成认证并进入仪表盘页面的 WebDriver 实例。
+        timeout: 等待列表元素出现的超时时间（秒），默认 10 秒。
+        delay_seconds: 每次点击之间的间隔时间（秒），默认 0.5 秒。
+
+    Returns:
+        int: 实际成功点击的列表项数量。
+    """
+    items_locator = (
+        By.CSS_SELECTOR,
+        'li[data-slot="base"] ul[role="group"] a[role="option"]',
+    )
+
+    wait = WebDriverWait(driver, timeout)
+
+    try:
+        elements = wait.until(EC.presence_of_all_elements_located(items_locator))
+    except TimeoutException as exc:
+        logger.warning("等待左侧订阅列表用于点击时超时: %s", exc)
+        return 0
+
+    total = len(elements)
+    if total == 0:
+        logger.info("左侧订阅列表为空，无法进行点击操作")
+        return 0
+
+    logger.info("准备依次点击左侧订阅列表中的 %d 项", total)
+
+    clicked = 0
+    for index in range(total):
+        try:
+            # 每次重新获取当前所有元素，避免 StaleElementReference
+            current_elements = wait.until(
+                EC.presence_of_all_elements_located(items_locator)
+            )
+            if index >= len(current_elements):
+                logger.warning("索引 %d 超出当前列表长度 %d，停止点击", index, len(current_elements))
+                break
+
+            element = current_elements[index]
+
+            # 获取一些日志信息（标题和 data-key）
+            try:
+                title_span = element.find_element(
+                    By.CSS_SELECTOR, 'span[data-label="true"]'
+                )
+                title_text = (title_span.text or "").strip()
+            except WebDriverException:
+                title_text = ""
+
+            data_key = element.get_attribute("data-key") or ""
+
+            logger.info(
+                "点击第 %d 项订阅: title='%s', data_key='%s'",
+                index + 1,
+                title_text,
+                data_key,
+            )
+
+            # 确保元素在可视区域并且可点击
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'nearest'});",
+                element,
+            )
+            wait.until(EC.element_to_be_clickable(element))
+            element.click()
+
+            clicked += 1
+            time.sleep(delay_seconds)
+        except TimeoutException as exc:
+            logger.warning("第 %d 项点击超时: %s", index + 1, exc)
+        except WebDriverException as exc:
+            logger.warning("点击第 %d 项订阅时发生 WebDriver 错误: %s", index + 1, exc)
+
+    logger.info("列表项点击完成，共成功点击 %d/%d 项", clicked, total)
+    return clicked
+
+
 def main() -> None:
     """
     主函数：创建 WebDriver 并打开目标页面。
@@ -482,7 +572,13 @@ def main() -> None:
             if not feed_items:
                 logger.warning("左侧订阅列表为空或读取失败，请手动检查页面状态")
 
-            logger.info("页面已成功打开、输入密钥、点击确认并读取左侧列表，可以开始后续操作")
+            # 任务 5：依次点击左侧列表中的每一项
+            clicked_count = click_all_feed_items(driver, timeout=10, delay_seconds=0.5)
+            logger.info("已尝试点击左侧所有列表项，成功点击数量: %d", clicked_count)
+
+            logger.info(
+                "页面已成功打开、输入密钥、点击确认、读取并尝试点击左侧列表，可以开始后续操作"
+            )
             # 保持浏览器打开，等待用户操作或后续任务
             input("按 Enter 键关闭浏览器...")
         else:
