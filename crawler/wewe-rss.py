@@ -325,6 +325,48 @@ def enter_auth_code(driver: WebDriver, auth_code: str, timeout: int = 10) -> boo
         raise
 
 
+def click_auth_confirm_button(driver: WebDriver, timeout: int = 10) -> bool:
+    """
+    点击页面中的“确认”按钮以提交已输入的密钥。
+
+    本函数会等待按钮变为可点击状态，然后执行点击操作。
+    可以根据需要在后续扩展为等待特定页面状态变化。
+
+    Args:
+        driver: 已经打开目标页面并输入密钥的 WebDriver 实例。
+        timeout: 等待按钮可点击的超时时间（秒），默认 10 秒。
+
+    Returns:
+        bool: 如果按钮成功点击返回 True，否则返回 False。
+
+    Raises:
+        WebDriverException: 当发生底层 WebDriver 错误时抛出。
+    """
+    try:
+        logger.info("开始查找并点击“确认”按钮")
+        wait = WebDriverWait(driver, timeout)
+
+        # 通过按钮文字“确认”以及 type=button 进行定位，避免依赖长 class
+        button_locator = (
+            By.XPATH,
+            '//button[@type="button" and normalize-space(text())="确认"]',
+        )
+
+        button_element = wait.until(EC.element_to_be_clickable(button_locator))
+        button_element.click()
+        logger.info("已点击“确认”按钮")
+
+        # 这里暂不强行等待特定状态，可以在后续任务中根据实际页面再细化校验
+        return True
+
+    except TimeoutException as exc:
+        logger.error("在页面中查找或点击“确认”按钮超时: %s", exc)
+        return False
+    except WebDriverException as exc:
+        logger.error("点击“确认”按钮时发生 WebDriver 错误: %s", exc)
+        raise
+
+
 def main() -> None:
     """
     主函数：创建 WebDriver 并打开目标页面。
@@ -355,7 +397,12 @@ def main() -> None:
             if not auth_ok:
                 logger.warning("认证密钥输入可能未生效，请手动检查页面状态")
 
-            logger.info("页面已成功打开并尝试输入密钥，可以开始后续操作")
+            # 任务 3：点击“确认”按钮提交密钥
+            confirm_ok = click_auth_confirm_button(driver, timeout=10)
+            if not confirm_ok:
+                logger.warning("“确认”按钮点击可能未成功，请手动检查页面状态")
+
+            logger.info("页面已成功打开、输入密钥并尝试点击确认，可以开始后续操作")
             # 保持浏览器打开，等待用户操作或后续任务
             input("按 Enter 键关闭浏览器...")
         else:
