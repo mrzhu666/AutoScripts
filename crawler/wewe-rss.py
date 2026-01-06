@@ -443,6 +443,63 @@ def read_left_feed_list(driver: WebDriver, timeout: int = 10) -> list[FeedItem]:
         raise
 
 
+def click_update_link_and_wait(driver: WebDriver, timeout: int = 60) -> bool:
+    """
+    点击“立即更新”按钮，并等待一次完整的更新状态周期。
+
+    本函数会：
+    1. 找到并点击文本为“立即更新”的链接；
+    2. 等待其文本变为“更新中...”；
+    3. 再等待其文本恢复为“立即更新”，表示后端处理完成。
+
+    Args:
+        driver: 当前停留在某个订阅详情页面的 WebDriver 实例。
+        timeout: 整个更新流程的最大等待时间（秒），默认 60 秒。
+
+    Returns:
+        bool: 如果状态按预期从“立即更新”→“更新中...”→“立即更新”则返回 True，
+            否则返回 False。
+    """
+    wait = WebDriverWait(driver, timeout)
+
+    update_locator = (
+        By.XPATH,
+        '//a[@role="link" and @href="#" and normalize-space(text())="立即更新"]',
+    )
+    updating_locator = (
+        By.XPATH,
+        '//a[@role="link" and @href="#" and normalize-space(text())="更新中..."]',
+    )
+
+    try:
+        # 第一步：点击“立即更新”
+        logger.info("开始查找并点击“立即更新”按钮")
+        update_element = wait.until(EC.element_to_be_clickable(update_locator))
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'nearest'});",
+            update_element,
+        )
+        update_element.click()
+
+        # 第二步：等待文本变为“更新中...”
+        logger.info("等待“立即更新”按钮进入“更新中...”状态")
+        wait.until(EC.presence_of_element_located(updating_locator))
+
+        # 第三步：等待文本恢复为“立即更新”
+        logger.info("等待更新完成，“更新中...”恢复为“立即更新”")
+        wait.until(EC.element_to_be_clickable(update_locator))
+
+        logger.info("本次“立即更新”流程完成")
+        return True
+
+    except TimeoutException as exc:
+        logger.warning("等待“立即更新”状态变化超时: %s", exc)
+        return False
+    except WebDriverException as exc:
+        logger.warning("点击或等待“立即更新”时发生 WebDriver 错误: %s", exc)
+        return False
+
+
 def click_all_feed_items(
     driver: WebDriver,
     timeout: int = 10,
@@ -460,7 +517,7 @@ def click_all_feed_items(
         delay_seconds: 每次点击之间的间隔时间（秒），默认 0.5 秒。
 
     Returns:
-        int: 实际成功点击的列表项数量。
+        int: 实际成功完成“点击列表项 + 更新”的列表项数量。
     """
     items_locator = (
         By.CSS_SELECTOR,
@@ -506,8 +563,18 @@ def click_all_feed_items(
 
             data_key = element.get_attribute("data-key") or ""
 
+            # 第一项通常为“全部”，不对应实际订阅内容，跳过
+            if index == 0 or title_text == "全部":
+                logger.info(
+                    "跳过第 %d 项无效订阅项: title='%s', data_key='%s'",
+                    index + 1,
+                    title_text,
+                    data_key,
+                )
+                continue
+
             logger.info(
-                "点击第 %d 项订阅: title='%s', data_key='%s'",
+                "处理第 %d 项订阅: title='%s', data_key='%s'",
                 index + 1,
                 title_text,
                 data_key,
@@ -521,7 +588,16 @@ def click_all_feed_items(
             wait.until(EC.element_to_be_clickable(element))
             element.click()
 
-            clicked += 1
+            # 每点击一个订阅项后，执行一次“立即更新”并等待完成
+            update_ok = click_update_link_and_wait(driver, timeout=60)
+            if not update_ok:
+                logger.warning(
+                    "第 %d 项订阅的“立即更新”流程可能未成功，请手动检查页面状态",
+                    index + 1,
+                )
+            else:
+                clicked += 1
+
             time.sleep(delay_seconds)
         except TimeoutException as exc:
             logger.warning("第 %d 项点击超时: %s", index + 1, exc)
