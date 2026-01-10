@@ -443,22 +443,23 @@ def read_left_feed_list(driver: WebDriver, timeout: int = 10) -> list[FeedItem]:
         raise
 
 
-def click_update_link_and_wait(driver: WebDriver, timeout: int = 60) -> bool:
+def click_update_link_and_wait(driver: WebDriver, timeout: int = 60, repeat_count: int = 5) -> bool:
     """
-    点击“立即更新”按钮，并等待一次完整的更新状态周期。
+    点击'立即更新'按钮，并等待一次完整的更新状态周期，重复指定次数。
 
-    本函数会：
-    1. 找到并点击文本为“立即更新”的链接；
-    2. 等待其文本变为“更新中...”；
-    3. 再等待其文本恢复为“立即更新”，表示后端处理完成。
+    本函数会重复执行以下流程指定次数：
+    1. 找到并点击文本为'立即更新'的链接；
+    2. 等待其文本变为'更新中...'；
+    3. 再等待其文本恢复为'立即更新'，表示后端处理完成。
 
     Args:
         driver: 当前停留在某个订阅详情页面的 WebDriver 实例。
-        timeout: 整个更新流程的最大等待时间（秒），默认 60 秒。
+        timeout: 每次更新流程的最大等待时间（秒），默认 60 秒。
+        repeat_count: 重复执行的次数，默认 5 次。
 
     Returns:
-        bool: 如果状态按预期从“立即更新”→“更新中...”→“立即更新”则返回 True，
-            否则返回 False。
+        bool: 如果所有重复次数都成功完成（状态按预期从'立即更新'→'更新中...'→'立即更新'）
+            则返回 True，否则返回 False。
     """
     wait = WebDriverWait(driver, timeout)
 
@@ -471,32 +472,50 @@ def click_update_link_and_wait(driver: WebDriver, timeout: int = 60) -> bool:
         '//a[@role="link" and @href="#" and normalize-space(text())="更新中..."]',
     )
 
-    try:
-        # 第一步：点击“立即更新”
-        logger.info("开始查找并点击“立即更新”按钮")
-        update_element = wait.until(EC.element_to_be_clickable(update_locator))
-        driver.execute_script(
-            "arguments[0].scrollIntoView({block: 'nearest'});",
-            update_element,
-        )
-        update_element.click()
+    success_count = 0
+    failed_count = 0
 
-        # 第二步：等待文本变为“更新中...”
-        logger.info("等待“立即更新”按钮进入“更新中...”状态")
-        wait.until(EC.presence_of_element_located(updating_locator))
+    for iteration in range(1, repeat_count + 1):
+        try:
+            logger.info("开始第 %d/%d 次'立即更新'流程", iteration, repeat_count)
+            
+            # 第一步：点击"立即更新"
+            logger.info("开始查找并点击'立即更新'按钮")
+            update_element = wait.until(EC.element_to_be_clickable(update_locator))
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'nearest'});",
+                update_element,
+            )
+            update_element.click()
 
-        # 第三步：等待文本恢复为“立即更新”
-        logger.info("等待更新完成，“更新中...”恢复为“立即更新”")
-        wait.until(EC.element_to_be_clickable(update_locator))
+            # 第二步：等待文本变为"更新中..."
+            logger.info("等待'立即更新'按钮进入'更新中...'状态")
+            wait.until(EC.presence_of_element_located(updating_locator))
 
-        logger.info("本次“立即更新”流程完成")
+            # 第三步：等待文本恢复为"立即更新"
+            logger.info("等待更新完成，'更新中...'恢复为'立即更新'")
+            wait.until(EC.element_to_be_clickable(update_locator))
+
+            logger.info("第 %d/%d 次'立即更新'流程完成", iteration, repeat_count)
+            success_count += 1
+
+        except TimeoutException as exc:
+            logger.warning("第 %d/%d 次等待'立即更新'状态变化超时: %s", iteration, repeat_count, exc)
+            failed_count += 1
+        except WebDriverException as exc:
+            logger.warning("第 %d/%d 次点击或等待'立即更新'时发生 WebDriver 错误: %s", iteration, repeat_count, exc)
+            failed_count += 1
+
+    if success_count == repeat_count:
+        logger.info("所有 %d 次'立即更新'流程均成功完成", repeat_count)
         return True
-
-    except TimeoutException as exc:
-        logger.warning("等待“立即更新”状态变化超时: %s", exc)
-        return False
-    except WebDriverException as exc:
-        logger.warning("点击或等待“立即更新”时发生 WebDriver 错误: %s", exc)
+    else:
+        logger.warning(
+            "%d 次'立即更新'流程执行完成：成功 %d 次，失败 %d 次",
+            repeat_count,
+            success_count,
+            failed_count,
+        )
         return False
 
 
@@ -588,11 +607,11 @@ def click_all_feed_items(
             wait.until(EC.element_to_be_clickable(element))
             element.click()
 
-            # 每点击一个订阅项后，执行一次“立即更新”并等待完成
-            update_ok = click_update_link_and_wait(driver, timeout=60)
+            # 每点击一个订阅项后，重复执行5次"立即更新"并等待完成
+            update_ok = click_update_link_and_wait(driver, timeout=60, repeat_count=5)
             if not update_ok:
                 logger.warning(
-                    "第 %d 项订阅的“立即更新”流程可能未成功，请手动检查页面状态",
+                    "第 %d 项订阅的'立即更新'流程可能未成功，请手动检查页面状态",
                     index + 1,
                 )
             else:
