@@ -677,7 +677,7 @@ def click_all_feed_items(
             element.click()
 
             # 每点击一个订阅项后，重复执行5次"立即更新"并等待完成
-            update_ok = click_update_link_and_wait(driver, timeout=60, repeat_count=5)
+            update_ok = click_update_link_and_wait(driver, timeout=60, repeat_count=1)
             if not update_ok:
                 logger.warning(
                     "第 %d 项订阅的'立即更新'流程可能未成功，请手动检查页面状态",
@@ -737,7 +737,7 @@ def main() -> None:
                 logger.warning("左侧订阅列表为空或读取失败，请手动检查页面状态")
 
             # 任务 5：依次点击左侧列表中的每一项
-            clicked_count = click_all_feed_items(driver, timeout=10, delay_seconds=0.5)
+            clicked_count = click_all_feed_items(driver, timeout=10, delay_seconds=12)
             logger.info("已尝试点击左侧所有列表项，成功点击数量: %d", clicked_count)
 
             logger.info(

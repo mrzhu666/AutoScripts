@@ -17,7 +17,7 @@ with open('./music/config.yaml', 'r') as file:
 current_dir = os.getcwd()
 print(current_dir)
 
-run_command = f"yt-dlp -x --audio-format mp3 --cookies {current_dir}\\music.youtube.com_cookies.txt --audio-quality 0 -P {save_path} {URL}"
+run_command = f"yt-dlp -x --audio-format m4a --cookies {current_dir}\\music.youtube.com_cookies.txt --audio-quality 0 -P {save_path} {URL}"
 
 # run command `yt-dlp -x --audio-format m4a --audio-quality 0 URL`
 print(run_command)
